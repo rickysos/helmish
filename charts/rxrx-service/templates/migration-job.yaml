@@ -1,0 +1,153 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "service.fullname" . }}-migrate
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+  labels:
+{{ include "service.labels.standard" . | indent 4 }}
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        service: {{ .Release.Name }}-migrate
+        release: {{ .Release.Name }}-migrate
+        app: {{ template "service.fullname" . }}-migrate
+        chart: {{ template "service.chart" . }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        checksum/configome: {{ include (print $.Template.BasePath "/configome-configmap.yaml") . | sha256sum }}
+     {{- with .Values.podAnnotations }}
+{{ toYaml . | indent 8 }}
+     {{- end }}
+    spec:
+      containers:
+      {{- if eq .Values.cloudsqlproxy.enabled true }}
+        - name: cloudsql-proxy
+          image: gcr.io/cloudsql-docker/gce-proxy:1.27.0-alpine
+          command: ["/bin/sh", "-c"]
+          args:
+          - | 
+            /cloud_sql_proxy -enable_iam_login -ip_address_types=PRIVATE -instances={{ .Values.cloudsqlproxy.instances }} &
+            while ! test -f /usr/share/pod/done; do
+              echo 'Waiting for the agent pod to finish...'
+              sleep 5
+            done
+            echo "Agent pod finished, exiting"
+            exit 0
+          securityContext:
+            runAsNonRoot: true
+          volumeMounts:
+            - mountPath: /usr/share/pod
+              name: tmp-pod
+              readOnly: true
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1"
+      {{- end }}
+        - name: {{ template "service.fullname" $ }}-migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+          - |
+            trap 'touch /usr/share/pod/done' EXIT
+            {{ .Values.migrations.command }}
+          envFrom:
+          {{- if .Values.config }}
+            - configMapRef:
+                name: {{ template "service.fullname" $ }}-config
+          {{- end }}
+          {{- if .Values.secret }}
+            - secretRef:
+                name: {{ template "service.fullname" $ }}-secret
+          {{- end }}
+          {{- if eq $.Values.externalSecrets.enabled true }}
+          {{- range $path := .Values.externalSecrets.relativeVaultPaths }}
+            - secretRef:
+                name: {{ template "service.fullname" $ }}{{ $path | replace "/" "-" }}-vault
+          {{- end }}
+          {{- end }}
+          {{- if .Values.envFrom }}
+            {{- toYaml .Values.envFrom | nindent 12 }}
+          {{- end }}
+          env:
+          {{- if .Values.migrations.env }}
+            {{- toYaml .Values.migrations.env | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - mountPath: /usr/share/pod
+              name: tmp-pod
+        {{- if .Values.volumeMounts }}
+            - name: {{ .Values.volumeMounts.name }}
+              mountPath: {{ .Values.volumeMounts.mountPath }}
+              readOnly: {{ .Values.volumeMounts.readOnly }}
+              {{- if .Values.volumeMounts.subPath }}
+              subPath: {{ .Values.volumeMounts.subPath }}
+              {{- end }}
+        {{- end }}
+        {{- if .Values.volumeMounts2 }}
+            - name: {{ .Values.volumeMounts2.name }}
+              mountPath: {{ .Values.volumeMounts2.mountPath }}
+              readOnly: {{ .Values.volumeMounts2.readOnly }}
+              {{- if .Values.volumeMounts2.subPath }}
+              subPath: {{ .Values.volumeMounts2.subPath }}
+              {{- end }}
+        {{- end }}
+        {{- if .Values.configome }}
+            - name: configome-volume 
+              mountPath: /root/
+        {{- end }}
+          {{- with .Values.resources }}
+          resources:
+{{ toYaml . | indent 12 }}
+          {{- end }}
+    {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecrets }}
+    {{- end }}
+    {{- if .Values.migrations.serviceAccount }}
+      serviceAccountName: {{ .Values.migrations.serviceAccount.name}}
+    {{- else if .Values.serviceAccount }}
+      serviceAccountName: {{ .Values.serviceAccount.name}}
+    {{- end }}
+      volumes:
+        - emptyDir: {}
+          name: tmp-pod
+    {{- if .Values.volumeMounts }}
+        - name: {{ .Values.volumeMounts.name }}
+          secret:
+            secretName: {{ .Values.volumeMounts.secretName }}
+            {{- if .Values.volumeMounts.defaultMode }}
+            defaultMode: {{ .Values.volumeMounts.defaultMode }}
+            {{- end }}
+    {{- end }}
+    {{- if .Values.volumeMounts2 }}
+        - name: {{ .Values.volumeMounts2.name }}
+          secret:
+            secretName: {{ .Values.volumeMounts2.secretName }}
+            {{- if .Values.volumeMounts2.defaultMode }}
+            defaultMode: {{ .Values.volumeMounts2.defaultMode }}
+            {{- end }}
+    {{- end }}
+    {{- if .Values.configome }}
+        - name: configome-volume
+          configMap:
+            name: {{ template "service.fullname" . }}-configome-config
+    {{- end }}
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+      restartPolicy: Never
+{{- end }}

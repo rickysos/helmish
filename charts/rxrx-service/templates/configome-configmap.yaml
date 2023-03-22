@@ -1,0 +1,12 @@
+{{- if .Values.configome }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: {{ template "service.fullname" . }}-configome-config
+    annotations:
+        argocd.argoproj.io/sync-wave: "-2"
+    labels:
+{{ include "service.labels.standard" . | indent 6 }}
+data:
+  configome.yaml: {{ toYaml .Values.configome | indent 2 }}
+{{- end }}

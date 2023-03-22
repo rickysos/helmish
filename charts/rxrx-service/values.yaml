@@ -1,0 +1,126 @@
+# Default values
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+auth:
+  enabled: false
+
+cluster: dev
+
+config: {}
+
+configome: ""
+
+secret: {}
+
+cloudsqlproxy:
+  enabled: false
+  instances: "my:db:instance=tcp:5432"
+  podAnnotations: {}
+
+externalSecrets:
+  enabled: false
+  # Vault secret paths will be relative to the app's root path (`/$ENGINE/$CLUSTER/$APP`, e.g., `/secret/principal/cauldron`)
+  relativeVaultPaths:
+    - "/"
+    - "/db"
+
+image:
+  repository: nginx
+  tag: latest
+  pullPolicy: Always
+
+replicas: 2
+replicaSetRetentionLimit: 2
+
+resources:
+  requests:
+    memory: 1Gi
+    cpu: 100m
+
+service:
+  type: ClusterIP
+  targetPort: 80
+  annotations: {}
+  labels: {}
+
+kedaScaler:
+  enabled: false
+### Example Keda Scaler
+# kedaScaler:
+#   enabled: true
+#   nginxIngress: true   #Will monitor ingress of service, If set to true triggers are ignored
+#   threshold: 10        #How many requests per second to trigger scaling
+#   pollingInterval: 30  #Not required, has default of 30
+#   cooldownPeriod: 300  #Not required, has default of 300, only applies when scaling to 0
+#   minReplicaCount:  1  #Not required, has default of 1
+#   maxReplicaCount: 10  #Not required, has default of 10
+#
+### To configure custom triggers, nginxIngress must be set to false
+#   triggers:
+#   - type: prometheus
+#     metadata:
+#       serverAddress:http://prometheus-operated.monitoring:9090
+#       metricName: nginx_ingress_controller_requests
+#       threshold: '2'
+#       query: round(sum(irate(nginx_ingress_controller_requests{ingress="MY-AWESOME-RELEASE-ps-service}"}[2m])) by (ingress), 0.001)
+
+ingress:
+  enabled: false
+  annotations: {}
+  labels: {}
+  path: /
+  hosts:
+    - "example.ops.rxrx.io"
+
+deployment:
+  apiVersion: "apps/v1"
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
+
+prometheus:
+  serviceMonitor:
+    enabled: false
+    interval: 10s
+    namespace: ""
+    metricsPath: /metrics
+
+podAnnotations: {}
+
+tolerations: []
+
+nodeSelector: {}
+
+## Create and use a non-default service account
+serviceAccount:
+  create: false
+  name: default
+
+rbac:
+  create: false
+
+hpa:
+  enabled: false
+### Example volumeMount
+# volumeMounts:
+#   name: my-volume-name
+#   mountPath: /path/to/mount
+#   readOnly: boolean
+#   secretName: my-secret-name
+
+# initContainers:
+#   - name: init-container-0
+#     image: 
+#       repository: gcr.io/eng-infrastructure/rxrx-pyenv
+#       tag: latest
+
+migrations:
+  enabled: false
+  command: "alembic upgrade head"
+  serviceAccount:
+    create: false
+    name: default
+  env: {}
+

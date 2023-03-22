@@ -1,0 +1,69 @@
+{{- if .Values.ingress.enabled -}}
+{{- $fullName := include "service.fullname" . -}}
+{{- $servicePort := .Values.service.port -}}
+{{- $ingressPath := .Values.ingress.path -}}
+apiVersion: {{ .Values.ingress.apiVersion | default "networking.k8s.io/v1" }}
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  labels:
+{{ include "service.labels.standard" . | indent 4 }}
+{{- if .Values.ingress.labels }}
+{{ toYaml .Values.ingress.labels | indent 4 }}
+{{- end }}
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt"
+    {{ if .Values.auth.enabled }}
+    nginx.ingress.kubernetes.io/auth-url: https://catalyst-auth.rxrx.io/authorize
+    nginx.ingress.kubernetes.io/auth-method: GET
+    nginx.ingress.kubernetes.io/proxy-body-size: 10m
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: '600'
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '600'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '600'
+    nginx.ingress.kubernetes.io/enable-cors: 'true'
+    nginx.ingress.kubernetes.io/cors-allow-methods: 'PUT, PATCH, DELETE, GET, POST, OPTIONS'
+    nginx.ingress.kubernetes.io/cors-allow-headers: 'Accept, Accept-Type, Authorization, Content-Type, Prefer'
+    nginx.ingress.kubernetes.io/cors-expose-headers: 'X-Total-Records, Link'
+    nginx.ingress.kubernetes.io/cors-allow-origin: 'https://catalyst.rxrx.io'
+    nginx.ingress.kubernetes.io/cors-allow-credentials: 'true'
+    nginx.ingress.kubernetes.io/cors-max-age: '86400'
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_pass_request_headers on;
+      if ($http_Accept ~ "application/json") {
+          add_header "content-type" "application/json" always;
+          # $location_path is a var set by kubernetes nginx auth ingress
+          #  dicsovered while poking through the generated nginx.conf
+          error_page 401 = $location_path/error.json;
+      }
+      location ~ (.*)?\/error.json {
+          return 401 '{"message": "access denied"}';
+      }
+      error_page 401 =302 https://catalyst-auth.rxrx.io/login?return_url=$request_uri;
+    {{ end }}
+{{- with .Values.ingress.annotations }}
+{{ toYaml . | indent 4 }}
+{{- end }}
+spec:
+  {{- if .Values.ingress.ingressClassName }}
+  ingressClassName: {{ .Values.ingress.ingressClassName }}
+  {{- end }}
+  tls:
+  {{- range .Values.ingress.hosts }}
+    - hosts:
+        - {{ . | quote }}
+      secretName: {{ $.Release.Name }}-{{ . }}-tls
+  {{- end }}
+  rules:
+  {{- range .Values.ingress.hosts }}
+    - host: {{ . }}
+      http:
+        paths:
+          - path: {{ $ingressPath }}
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  number: {{ default 80 $servicePort }}
+  {{- end }}
+{{- end }}

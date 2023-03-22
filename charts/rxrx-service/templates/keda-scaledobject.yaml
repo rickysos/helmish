@@ -1,0 +1,26 @@
+{{- if .Values.kedaScaler.enabled }}
+{{- $fullName := include "service.fullname" . -}}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject 
+metadata:
+  name: {{ template "service.fullname" . }}-keda
+spec:
+  scaleTargetRef:
+    name: {{ template "service.fullname" . }}
+  pollingInterval: {{ .Values.kedaScaler.pollingInterval | default 30}}
+  cooldownPeriod: {{ .Values.kedaScaler.cooldownPeriod | default 300 }}
+  minReplicaCount: {{ .Values.kedaScaler.minReplicaCount | default 1 }}
+  maxReplicaCount: {{ .Values.kedaScaler.maxReplicaCount | default 10 }}
+{{- if .Values.kedaScaler.nginxIngress }}
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus-operated.monitoring:9090
+      metricName: nginx_ingress_controller_requests
+      threshold: {{ .Values.kedaScaler.threshold | quote }}
+      query: round(sum(irate(nginx_ingress_controller_requests{ingress="{{$fullName}}"}[2m])) by (ingress), 0.001)
+{{- else }}
+  triggers:
+{{ tpl (toYaml .Values.kedaScaler.triggers) . | indent 2 }}
+{{- end }}
+{{- end }}

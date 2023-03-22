@@ -1,0 +1,14 @@
+{{- if .Values.config }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: {{ template "service.fullname" . }}-config
+    annotations:
+        argocd.argoproj.io/sync-wave: "-2"
+    labels:
+{{ include "service.labels.standard" . | indent 6 }}
+data:
+  {{- range $key, $val := .Values.config }}
+  {{ $key }}: {{ $val | quote }}
+  {{- end }}
+{{- end }}

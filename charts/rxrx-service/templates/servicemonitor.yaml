@@ -1,0 +1,29 @@
+{{- if .Values.prometheus.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ template "service.fullname" . }}
+  {{- if .Values.prometheus.serviceMonitor.namespace }}
+  namespace: {{ .Values.prometheus.serviceMonitor.namespace }}
+  {{- end }}
+  labels:
+    app: {{ template "service.fullname" . }}
+    chart: {{ template "service.chart" . }}
+    release: prometheus-operator
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "service.fullname" . }}
+      release: {{ .Release.Name }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    {{- if .Values.prometheus.metricsPort }}
+    - port: {{ .Values.prometheus.metricsPort }}
+    {{- else }}
+    - port: service
+    {{- end }}
+      interval: {{ .Values.prometheus.serviceMonitor.interval }}
+      path: {{ .Values.prometheus.serviceMonitor.metricsPath }}
+{{- end -}}

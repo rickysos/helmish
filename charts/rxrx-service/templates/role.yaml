@@ -1,0 +1,14 @@
+{{ if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: Role
+metadata:
+  labels:
+{{ include "service.labels.standard" . | indent 4 }}
+  name: {{ template "service.fullname" . }}
+{{- if .Values.rbac.roleRules }}
+rules:
+{{ tpl .Values.rbac.roleRules . | indent 0 }}
+{{- else }}
+rules: []
+{{- end }}
+{{- end }}
